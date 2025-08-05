@@ -1,15 +1,23 @@
 # context_aware_assistan
 
+The fundamental assumption for this tool set is that LLM's need context information to provide higehr quality generated content, such as test code. 
+
+This is a tool set that allows to
+- Create a Chroma Vector DB containing the context of a project 
+- Query the chroma_db to understand what's in it; can also be used to query the project
+- Generate content with context
 
 
 ## Installation
 
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+Perform the following steps
+- python3 -m venv venv
+- source venv/bin/activate
+- pip install --upgrade pip
+- pip install -r requirements.txt
+- touch .env
 
-You need a Open API key to run this. Provide the key and url in a ".env" file
+You need a Open API key to run this, please add to the .env the following keys
 ```
     OPENAI_API_KEY=sk-...
     OPENAI_API_BASE=https://api.openai.com/v1
