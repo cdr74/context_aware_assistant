@@ -1,8 +1,9 @@
 import os
 import argparse
-from chromadb import PersistentClient
 from dotenv import load_dotenv
+from chromadb import PersistentClient
 import openai
+import json
 
 # --- Load secrets ---
 load_dotenv()
@@ -12,6 +13,19 @@ openai.api_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 if not openai.api_key:
     raise RuntimeError("OPENAI_API_KEY not found in .env file.")
 
+# --- Persistent chat history ---
+CHAT_HISTORY_FILE = "./testgen_chat_history.json"
+
+def load_chat_history():
+    if os.path.exists(CHAT_HISTORY_FILE):
+        with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_chat_history(history):
+    with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
 # --- Embedding function ---
 def get_embedding(text: str, model="text-embedding-3-small"):
     response = openai.embeddings.create(
@@ -20,7 +34,7 @@ def get_embedding(text: str, model="text-embedding-3-small"):
     )
     return response.data[0].embedding
 
-# --- Prompt templates per test type ---
+# --- Prompt templates ---
 PROMPT_TEMPLATES = {
     "unit": """You are a professional software engineer.
 
@@ -73,10 +87,10 @@ def build_prompt(source_code, context_chunks, style, user_prompt=None):
     )
 
 # --- Ask OpenAI to generate tests ---
-def generate_test_code(prompt, model="gpt-4o"):
+def generate_test_code(messages, model="gpt-4o"):
     response = openai.chat.completions.create(
         model=model,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
         temperature=0.2
     )
     return response.choices[0].message.content.strip()
@@ -94,7 +108,6 @@ args = parser.parse_args()
 
 # --- Handle file input or prompt depending on test type ---
 source_code = ""
-
 if args.style == "unit":
     if not args.file:
         raise ValueError("--file is required for unit tests")
@@ -105,7 +118,6 @@ if args.style == "unit":
     if not source_code.strip():
         raise ValueError("Source file is empty")
 
-# --- Prompt user for flow/intent for api/ui ---
 user_prompt = None
 if args.style in ("api", "ui"):
     print(f"💬 Please describe what to test for the {args.style} test:")
@@ -122,18 +134,45 @@ results = collection.query(
     query_embeddings=[query_embedding],
     n_results=args.top_k,
 )
-
 context_chunks = results["documents"][0]
 
-# --- Build prompt and generate test ---
-prompt = build_prompt(source_code, context_chunks, args.style, user_prompt)
-generated_code = generate_test_code(prompt, args.model)
+# --- Load chat history ---
+chat_history = load_chat_history()
 
-# --- Output ---
-print("\n📄 Generated Code:\n")
-print(generated_code)
+# Add the new request to the conversation
+initial_prompt = build_prompt(source_code, context_chunks, args.style, user_prompt)
+chat_history.append({"role": "user", "content": initial_prompt})
 
-if args.output:
-    with open(args.output, "w", encoding="utf-8") as f:
-        f.write(generated_code)
-    print(f"\n✅ Saved to {args.output}")
+# --- Interactive loop for generation and refinement ---
+while True:
+    generated_code = generate_test_code(chat_history, args.model)
+
+    print("\n📄 Generated Code:\n")
+    print(generated_code)
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(generated_code)
+        print(f"\n✅ Saved to {args.output}")
+
+    print("\nOptions:")
+    print("[1] Accept and exit")
+    print("[2] Revise prompt and regenerate")
+    print("[3] Add correction to the code and regenerate")
+    choice = input("Select: ").strip()
+
+    if choice == "1":
+        break
+    elif choice == "2":
+        print("\n✏️ Enter revised request:")
+        revised = input("▶️  ")
+        chat_history.append({"role": "user", "content": revised})
+    elif choice == "3":
+        print("\n🔧 Describe correction to apply:")
+        correction = input("▶️  ")
+        chat_history.append({"role": "user", "content": f"Please apply this correction: {correction}"})
+    else:
+        print("Invalid choice. Please select 1, 2, or 3.")
+        continue
+
+save_chat_history(chat_history)
