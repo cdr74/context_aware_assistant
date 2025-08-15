@@ -88,8 +88,11 @@ Example:
 In order to understand what is in the chrome db, use the following helper scripts, first list all collections:
 > python ./code/list_collections.py
 
-Then inspect the collection
+In order to drop an existing collection:
+> python code/drop_collection.py --drop code_docs
 
+
+To inspect the collection
 ```
 usage: query_vector_db.py [-h] [--db DB] --query QUERY [--top_k TOP_K] [--tag {source,test,doc}]
 
